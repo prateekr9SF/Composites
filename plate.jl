@@ -84,11 +84,30 @@ function compute_abd_matrix_at_x(lamina_properties, thickness_at_x, stacking_seq
 end
 
 # Calculate deflection along the length of the plate with elliptical load
-function deflection_at_x(x, a, q_max, D11, q_self_weight)
+#function deflection_at_x(x, a, q_max, D11, q_self_weight)
+#    # Get local load at this spanwise station
+#    q_x = q_total(x, a, q_max, q_self_weight)
+#    return (q_x * x^2 / (24 * D11)) * (6*a - x)
+#end
+
+# Calculate deflection along the length of the tapered plate with elliptical load
+function deflection_at_x(x, a, q_max, lamina_properties, stacking_sequence, q_self_weight, thickness_max, thickness_min)
+    # Get the local thickness at this x
+    thickness_x = thickness_at_x(x, thickness_max, thickness_min, a)
+
+    # Get the ABD matrix at this x (depends on local thickness)
+    ABD_matrix_x = compute_abd_matrix_at_x(lamina_properties, thickness_x, stacking_sequence)
+
+    # Extract D11 for the bending stiffness at this x
+    D11_x = ABD_matrix_x[4, 1]  # Bending stiffness for x-direction
+
     # Get local load at this spanwise station
     q_x = q_total(x, a, q_max, q_self_weight)
-    return (q_x * x^2 / (24 * D11)) * (6*a - x)
+
+    # Compute the deflection at x considering the local thickness
+    return (q_x * x^2 / (24 * D11_x)) * (6*a - x)
 end
+
 
 # Total load at any point x for elliptical lift distribution
 function q_total(x, a, q_max, q_self_weight)
@@ -133,6 +152,27 @@ function thickness_at_x(x, thickness_max, thickness_min, a)
     return thickness_max - (thickness_max - thickness_min) * (x / a)
 end
 
+# Calculate the mid-plane strain and curvature from applied moments
+function compute_strain_curvature(A, B, D, M)
+    # Assemble ABD matrix
+    ABD_matrix = [A B; B D]
+    
+    # In-plane forces are zero for pure bending
+    N = [0, 0, 0]
+
+    # Combine in-plane forces and moments
+    NM = vcat(N, M)
+
+    # Solve for strain and curvature
+    strain_curvature = ABD_matrix \ NM
+    
+    # Split into mid-plane strain and curvature components
+    mid_plane_strain = strain_curvature[1:3]
+    curvature = strain_curvature[4:6]
+    
+    return mid_plane_strain, curvature
+end
+
 
 # Total thickness of laminate (max and min for tapered plate)
 thickness_max = 0.003  # Max thickness at the root (x = 0)
@@ -144,7 +184,7 @@ stacking_sequence = [0, 45, -45, 90] .* 7
 lamina_stiffness = get_CFRP_stiffness()
 
 # Compute the ABD matrix for the laminate
-ABD_matrix = compute_abd_matrix(lamina_stiffness, thickness, stacking_sequence)
+#ABD_matrix = compute_abd_matrix(lamina_stiffness, thickness, stacking_sequence)
 
 # Plate dimensions (assuming a rectangular cantilevered plate)
 a = 1.0  # meters (length of the cantilevered plate)
@@ -153,7 +193,9 @@ a = 1.0  # meters (length of the cantilevered plate)
 q_max = 500  # N/m^2 (max load at the wing root)
 density = 1600 # kg/m^3 for CFRP
 
-q_self_weight = density * 9.81 * thickness  # Load due to self-weight
+# TO-DO: Taper self weight
+q_self_weight = density * 9.81 * thickness_max  # Load due to self-weight
+
 
 # Calculate bending moments due to uniform load at the cantilevered end
 Mx = bending_moment_elliptical(a, q_max, q_self_weight) 
@@ -165,28 +207,32 @@ My = 0
 M = [Mx, My, 0]  # No twisting moment Mxy
 
 
-# In-plane forces are zero for bending due to uniform load
-N = [0, 0, 0]
+# Compute the ABD matrix for the laminate at the root (thickest section)
+ABD_matrix_root = compute_abd_matrix_at_x(lamina_stiffness, thickness_max, stacking_sequence)
 
-# Combine forces and moments
-NM = vcat(N, M)  # Combine force and moment vectors
-strain_curvature = ABD_matrix \ NM
+# Extract A, B, and D matrices
+A = ABD_matrix_root[1:3, 1:3]
+B = ABD_matrix_root[1:3, 4:6]
+D = ABD_matrix_root[4:6, 4:6]
 
-D11 = ABD_matrix[4, 1]  # Bending stiffness for x-direction
-
-# Extract mid-plane strains and curvatures
-mid_plane_strain = strain_curvature[1:3]
-curvature = strain_curvature[4:6]
+# Compute mid-plane strain and curvature at the root
+mid_plane_strain, curvature = compute_strain_curvature(A, B, D, M)
 
 # Discretize the plate length
 x_vals = range(0, a, length=100)  # 100 points along the length of the plate
-w_vals = [deflection_at_x(x, a, q_max, D11, q_self_weight) for x in x_vals]
+
+# Compute deflections considering the taper
+w_vals = [deflection_at_x(x, a, q_max, lamina_stiffness, stacking_sequence, q_self_weight, thickness_max, thickness_min) for x in x_vals]
+
 
 # Compute stress distributions using the functions from the included file
-stress_distributions = compute_stress_distribution_all(lamina_stiffness, thickness, stacking_sequence, mid_plane_strain, curvature, x_vals)
+stress_distributions = compute_stress_distribution_tapered(
+    lamina_stiffness, thickness_max, thickness_min, a, stacking_sequence, mid_plane_strain, curvature, x_vals
+)
+
 # Plot the stress distributions using the function from the included file
 
-plot_all_stress_contours(x_vals, stress_distributions, thickness, stacking_sequence)
+plot_all_stress_contours(x_vals, stress_distributions, thickness_max, thickness_min, a, stacking_sequence)
 
 #plot_stress_distributions(x_vals, stress_distributions, thickness, stacking_sequence)
 
