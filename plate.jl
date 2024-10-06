@@ -64,6 +64,25 @@ function compute_abd_matrix(lamina_properties, thickness, stacking_sequence)
     return [A B; B D]
 end
 
+# Compute the ABD matrix for a laminate with varying thickness
+function compute_abd_matrix_at_x(lamina_properties, thickness_at_x, stacking_sequence)
+    n = length(stacking_sequence)
+    h = thickness_at_x / n  # Thickness of each lamina at position x
+    A = zeros(3, 3)
+    B = zeros(3, 3)
+    D = zeros(3, 3)
+    z_prev = -thickness_at_x / 2  # Mid-plane offset
+    for theta in stacking_sequence
+        z_next = z_prev + h
+        Q_bar = transform_Q(lamina_properties, theta)
+        A .+= Q_bar * (z_next - z_prev)
+        B .+= Q_bar * (z_next^2 - z_prev^2) / 2
+        D .+= Q_bar * (z_next^3 - z_prev^3) / 3
+        z_prev = z_next
+    end
+    return [A B; B D]
+end
+
 # Calculate deflection along the length of the plate with elliptical load
 function deflection_at_x(x, a, q_max, D11, q_self_weight)
     # Get local load at this spanwise station
@@ -109,11 +128,16 @@ function plot_force_distributions(a, q_max, q_self_weight)
     println("Plot saved as force_distributions.png")
 end
 
+# Function to define thickness as a function of x (for a tapered plate)
+function thickness_at_x(x, thickness_max, thickness_min, a)
+    return thickness_max - (thickness_max - thickness_min) * (x / a)
+end
 
 
+# Total thickness of laminate (max and min for tapered plate)
+thickness_max = 0.003  # Max thickness at the root (x = 0)
+thickness_min = 0.001  # Min thickness at the tip (x = a)
 
-# Total thickness of laminate and stacking sequence
-thickness = 0.003
 stacking_sequence = [0, 45, -45, 90] .* 7
 
 # Get stiffness matrix for a single lamina
