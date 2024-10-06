@@ -62,16 +62,24 @@ function compute_abd_matrix(lamina_properties, thickness, stacking_sequence)
     return [A B; B D]
 end
 
-function compute_load(p_aero,density)
-
-    # Self weight
-    q_weight = density * 9.81 * thickness
-    return (p_aero + q_weight)
+# Calculate deflection along the length of the plate with elliptical load
+function deflection_at_x(x, a, q_max, D11, q_self_weight)
+    # Get local load at this spanwise station
+    q_x = q_total(x, a, q_max, q_self_weight)
+    return (q_x * x^2 / (24 * D11)) * (6a - x)
 end
 
-# Now, calculate deflection along the length of the cantilevered plate
-function deflection_at_x(x, a, q, D11)
-    return (q * x^2 / (24 * D11)) * (6a - x)
+# Total load at any point x for elliptical lift distribution
+function q_total(x, a, q_max, q_self_weight)
+    # Pressure load + body load
+    return q_max * sqrt(1 - (x/a)^2) + q_self_weight
+end
+
+# Calculate the bending moment due to elliptical lift distribution at the cantilevered ene
+function bending_moment_elliptical(a, q_max, q_self_weight)
+    # Elliptical moment integral for maximum bending moment at the fixed end
+    Mx = (q_max * a^2 / 4) + (q_self_weight * a^2 / 2)  # Combine self-weight and elliptical moment
+    return Mx
 end
 
 # Total thickness of laminate and stacking sequence
@@ -88,15 +96,16 @@ ABD_matrix = compute_abd_matrix(lamina_stiffness, thickness, stacking_sequence)
 a = 1.0  # meters (length of the cantilevered plate)
 
 # Apply uniform pressure (N/m^2)
-q_aero = 500  # N/m^2 (uniform load)
+q_max = 500  # N/m^2 (max load at the wing root)
 density = 1600 # kg/m^3 for CFRP
 
-
-q_total = compute_load(q_aero, density)
+q_self_weight = density * 9.81 * thickness  # Load due to self-weight
 
 # Calculate bending moments due to uniform load at the cantilevered end
-Mx = q_total * a^2 / 2  # Maximum bending moment at the fixed end
-My = 0             # No moment in the transverse direction for cantilevered loading
+Mx = bending_moment_elliptical(a, q_max, q_self_weight) 
+
+# No moment in the transverse direction for cantilevered loading
+My = 0            
 
 # External moments applied (Mx, My)
 M = [Mx, My, 0]  # No twisting moment Mxy
@@ -109,7 +118,7 @@ N = [0, 0, 0]
 NM = vcat(N, M)  # Combine force and moment vectors
 strain_curvature = ABD_matrix \ NM
 
-D11 = ABD_matrix[4, 4]  # Bending stiffness for x-direction
+D11 = ABD_matrix[4, 1]  # Bending stiffness for x-direction
 
 # Extract mid-plane strains and curvatures
 mid_plane_strain = strain_curvature[1:3]
@@ -117,7 +126,7 @@ curvature = strain_curvature[4:6]
 
 # Discretize the plate length
 x_vals = range(0, a, length=100)  # 100 points along the length of the plate
-w_vals = [deflection_at_x(x, a, q_total, D11) for x in x_vals]
+w_vals = [deflection_at_x(x, a, q_max, D11, q_self_weight) for x in x_vals]
 
 # Plot deflection along the plate length using PyPlot
 figure()
