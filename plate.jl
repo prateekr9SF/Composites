@@ -1,7 +1,61 @@
 using LinearAlgebra
 using PyPlot
 
-include("stress.jl")
+#include("stress.jl")
+
+# Function to compute stress distributions at each point along the plate for a tapered plate
+function compute_stress_distribution_tapered(lamina_properties, thickness_max, thickness_min, a, stacking_sequence, mid_plane_strain, curvature, x_vals)
+    n = length(stacking_sequence)
+    stress_distributions = []
+
+    for x in x_vals
+        # Compute local thickness at x
+        thickness_x = thickness_at_x(x, thickness_max, thickness_min, a)
+
+        # Compute the ABD matrix for this location based on local thickness
+        ABD_matrix_x = compute_abd_matrix_at_x(lamina_properties, thickness_x, stacking_sequence)
+
+        # Get mid-plane strain and curvature at this location (mid_plane_strain and curvature are constant)
+        strain_curvature_x = mid_plane_strain .+ curvature .* x
+        
+        stress_at_x = []
+        z_prev = -thickness_x / 2  # Start from the bottom of the laminate
+
+        for i in 1:n
+            # Get the z value for this ply
+            z = z_prev + (thickness_x / n)
+
+            # Compute strain at this z position (mid-plane strain + curvature * z)
+            strain_z = strain_curvature_x .+ z .* curvature
+
+            # Get the transformed stiffness matrix Q for this ply's orientation
+            Q_bar = transform_Q(lamina_properties, stacking_sequence[i])
+
+            # Compute stress using sigma = Q * epsilon
+            stress_z = Q_bar * strain_z
+
+            # Store the stress for this ply
+            push!(stress_at_x, stress_z)
+
+            z_prev = z
+        end
+
+        # Store the stress at this location x
+        push!(stress_distributions, stress_at_x)
+    end
+
+    return stress_distributions
+end
+
+
+# Helper function to create a meshgrid
+function meshgrid(x, y)
+    X = repeat(x', length(y), 1)
+    Y = repeat(y, 1, length(x))
+    return X, Y
+end
+
+
 
 # Material properties for a single lamina of CFRP
 function get_CFRP_stiffness()
@@ -83,15 +137,9 @@ function compute_abd_matrix_at_x(lamina_properties, thickness_at_x, stacking_seq
     return [A B; B D]
 end
 
-# Calculate deflection along the length of the plate with elliptical load
-#function deflection_at_x(x, a, q_max, D11, q_self_weight)
-#    # Get local load at this spanwise station
-#    q_x = q_total(x, a, q_max, q_self_weight)
-#    return (q_x * x^2 / (24 * D11)) * (6*a - x)
-#end
 
 # Calculate deflection along the length of the tapered plate with elliptical load
-function deflection_at_x(x, a, q_max, lamina_properties, stacking_sequence, q_self_weight, thickness_max, thickness_min)
+function deflection_at_x(x, a, q_max, lamina_properties, stacking_sequence, thickness_max, thickness_min, density)
     # Get the local thickness at this x
     thickness_x = thickness_at_x(x, thickness_max, thickness_min, a)
 
@@ -102,25 +150,58 @@ function deflection_at_x(x, a, q_max, lamina_properties, stacking_sequence, q_se
     D11_x = ABD_matrix_x[4, 1]  # Bending stiffness for x-direction
 
     # Get local load at this spanwise station
-    q_x = q_total(x, a, q_max, q_self_weight)
+    q_x = q_total(x, a, q_max, thickness_max, thickness_min, density)
 
     # Compute the deflection at x considering the local thickness
     return (q_x * x^2 / (24 * D11_x)) * (6*a - x)
 end
 
-
-# Total load at any point x for elliptical lift distribution
-function q_total(x, a, q_max, q_self_weight)
-    # Pressure load + body load
-    return q_max * sqrt(1 - (x/a)^2) + q_self_weight
+# Total load at any point x for elliptical lift distribution w/ tapered thickness
+function q_total(x, a, q_max, thickness_max, thickness_min, density)
+    # Compute thickness at x for the taper
+    thickness_x = thickness_at_x(x, thickness_max, thickness_min, a)
+    
+    # Self-weight at this x
+    q_self_weight_x = density * 9.81 * thickness_x
+    
+    # Total load (elliptical + self-weight)
+    return q_max * sqrt(1 - (x/a)^2) + q_self_weight_x
 end
 
-# Calculate the bending moment due to elliptical lift distribution at the cantilevered ene
-function bending_moment_elliptical(a, q_max, q_self_weight)
-    # Elliptical moment integral for maximum bending moment at the fixed end
-    Mx = (q_max * a^2 / 4) + (q_self_weight * a^2 / 2)  # Combine self-weight and elliptical moment
-    return Mx
+
+# Function to compute bending moment considering varying self-weight and elliptical lift distribution
+function bending_moment_tapered(x_vals, q_max, thickness_max, thickness_min, density, a)
+    Mx_total = 0.0  # Initialize total bending moment at the fixed end (x = 0)
+
+    for i in 1:length(x_vals)-1
+        # Get x positions (current and next) for integration
+        x = x_vals[i]
+        x_next = x_vals[i + 1]
+        
+        # Compute thickness at x and x_next
+        thickness_x = thickness_at_x(x, thickness_max, thickness_min, a)
+        thickness_x_next = thickness_at_x(x_next, thickness_max, thickness_min, a)
+
+        # Self-weight at x and x_next
+        q_self_weight_x = density * 9.81 * thickness_x
+        q_self_weight_x_next = density * 9.81 * thickness_x_next
+
+        # Elliptical load at x and x_next
+        q_elliptical_x = q_max * sqrt(1 - (x/a)^2)
+        q_elliptical_x_next = q_max * sqrt(1 - (x_next/a)^2)
+
+        # Total load (self-weight + elliptical) at x and x_next
+        total_load_x = q_self_weight_x + q_elliptical_x
+        total_load_x_next = q_self_weight_x_next + q_elliptical_x_next
+
+        # Trapezoidal integration for bending moment (area under the load curve)
+        Mx_total += 0.5 * (total_load_x + total_load_x_next) * (x_next - x) * (x_next^2 + x^2) / 2
+    end
+
+    return Mx_total
 end
+
+
 
 # Function to compute elliptical lift distribution and body weight distribution
 function plot_force_distributions(a, q_max, q_self_weight)
@@ -189,16 +270,16 @@ lamina_stiffness = get_CFRP_stiffness()
 # Plate dimensions (assuming a rectangular cantilevered plate)
 a = 1.0  # meters (length of the cantilevered plate)
 
+# Discretize the plate length
+x_vals = range(0, a, length=100)  # 100 points along the length of the plate
+
 # Apply uniform pressure (N/m^2)
 q_max = 500  # N/m^2 (max load at the wing root)
 density = 1600 # kg/m^3 for CFRP
 
-# TO-DO: Taper self weight
-q_self_weight = density * 9.81 * thickness_max  # Load due to self-weight
 
-
-# Calculate bending moments due to uniform load at the cantilevered end
-Mx = bending_moment_elliptical(a, q_max, q_self_weight) 
+# Compute the bending moment at the root, considering the varying thickness and self-weight
+Mx = bending_moment_tapered(x_vals, q_max, thickness_max, thickness_min, density, a)
 
 # No moment in the transverse direction for cantilevered loading
 My = 0            
@@ -218,33 +299,19 @@ D = ABD_matrix_root[4:6, 4:6]
 # Compute mid-plane strain and curvature at the root
 mid_plane_strain, curvature = compute_strain_curvature(A, B, D, M)
 
-# Discretize the plate length
-x_vals = range(0, a, length=100)  # 100 points along the length of the plate
+
 
 # Compute deflections considering the taper
-w_vals = [deflection_at_x(x, a, q_max, lamina_stiffness, stacking_sequence, q_self_weight, thickness_max, thickness_min) for x in x_vals]
+w_vals = [deflection_at_x(x, a, q_max, lamina_stiffness, stacking_sequence, thickness_max, thickness_min, density) for x in x_vals]
 
 
-# Compute stress distributions using the functions from the included file
-stress_distributions = compute_stress_distribution_tapered(
-    lamina_stiffness, thickness_max, thickness_min, a, stacking_sequence, mid_plane_strain, curvature, x_vals
-)
+stress_distribution = compute_stress_distribution_tapered(lamina_stiffness, thickness_max, thickness_min, a, stacking_sequence, mid_plane_strain, curvature, x_vals)
 
 # Plot the stress distributions using the function from the included file
 
-plot_all_stress_contours(x_vals, stress_distributions, thickness_max, thickness_min, a, stacking_sequence)
+plot_all_stress_contours(x_vals, stress_distribution, thickness_max, thickness_min, a, stacking_sequence)
 
 #plot_stress_distributions(x_vals, stress_distributions, thickness, stacking_sequence)
 
 
-# Plot deflection along the plate length using PyPlot
-#figure()
-#plot(x_vals, w_vals, color="b", linewidth=2)
-#xlabel("Length along plate (m)")
-#ylabel("Deflection (m)")
-#title("Deflection of Cantilevered Plate under Uniform Load")
-## Save the plot as a PNG file
-#savefig("cantilevered_plate_deflection.png")
-
-#plot_force_distributions(a, q_max, q_self_weight)
 
