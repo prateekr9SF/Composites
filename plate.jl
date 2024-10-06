@@ -62,6 +62,17 @@ function compute_abd_matrix(lamina_properties, thickness, stacking_sequence)
     return [A B; B D]
 end
 
+function compute_load(p_aero,density)
+
+    # Self weight
+    q_weight = density * 9.81 * thickness
+    return (p_aero + q_weight)
+end
+
+# Now, calculate deflection along the length of the cantilevered plate
+function deflection_at_x(x, a, q, D11)
+    return (q * x^2 / (24 * D11)) * (6a - x)
+end
 
 # Total thickness of laminate and stacking sequence
 thickness = 0.003
@@ -73,11 +84,47 @@ lamina_stiffness = get_CFRP_stiffness()
 # Compute the ABD matrix for the laminate
 ABD_matrix = compute_abd_matrix(lamina_stiffness, thickness, stacking_sequence)
 
-# Display the ABD matrix
-println("ABD Matrix for the Carbon Fiber Reinforced Plastic (CFRP) laminate:\n")
-println(ABD_matrix)
+# Plate dimensions (assuming a rectangular cantilevered plate)
+a = 1.0  # meters (length of the cantilevered plate)
+
+# Apply uniform pressure (N/m^2)
+q_aero = 500  # N/m^2 (uniform load)
+density = 1600 # kg/m^3 for CFRP
 
 
+q_total = compute_load(q_aero, density)
+
+# Calculate bending moments due to uniform load at the cantilevered end
+Mx = q_total * a^2 / 2  # Maximum bending moment at the fixed end
+My = 0             # No moment in the transverse direction for cantilevered loading
+
+# External moments applied (Mx, My)
+M = [Mx, My, 0]  # No twisting moment Mxy
 
 
-println("Passing")
+# In-plane forces are zero for bending due to uniform load
+N = [0, 0, 0]
+
+# Combine forces and moments
+NM = vcat(N, M)  # Combine force and moment vectors
+strain_curvature = ABD_matrix \ NM
+
+D11 = ABD_matrix[4, 4]  # Bending stiffness for x-direction
+
+# Extract mid-plane strains and curvatures
+mid_plane_strain = strain_curvature[1:3]
+curvature = strain_curvature[4:6]
+
+# Discretize the plate length
+x_vals = range(0, a, length=100)  # 100 points along the length of the plate
+w_vals = [deflection_at_x(x, a, q_total, D11) for x in x_vals]
+
+# Plot deflection along the plate length using PyPlot
+figure()
+plot(x_vals, w_vals, color="b", linewidth=2)
+xlabel("Length along plate (m)")
+ylabel("Deflection (m)")
+title("Deflection of Cantilevered Plate under Uniform Load")
+# Save the plot as a PNG file
+savefig("cantilevered_plate_deflection.png")
+
