@@ -92,12 +92,12 @@ function plot_all_stress_contours(x_vals, stress_distributions, thickness, stack
     # Create a mesh grid for x (length) and z (through-thickness) values
     X, Z = meshgrid(x_vals, z_vals)
 
-    # Initialize figure for subplots
-    figure()
+    # Initialize figure for subplots with DPI set to 300
+    figure(dpi=300)
 
     # Stress components to plot (σₓₓ, σᵧᵧ, σₓᵧ)
     components = ["xx", "yy", "xy"]
-    titles = ["σₓₓ - Longitudinal Stress", "σᵧᵧ - Transverse Stress", "σₓᵧ - Shear Stress"]
+    titles = ["σₓₓ - Longitudinal Stress (MPa)", "σᵧᵧ - Transverse Stress (MPa)", "σₓᵧ - Shear Stress (MPa)"]
 
     for k in 1:3
         # Initialize a matrix to store interpolated stress values at each (x, z) point
@@ -110,24 +110,47 @@ function plot_all_stress_contours(x_vals, stress_distributions, thickness, stack
                 # Get the stress for the current lamina at this x position for the selected component
                 stress_z = stress_distributions[i][j][component_idx]
 
+                # Convert stress from Pa to MPa (1 MPa = 10^6 Pa)
+                stress_z_mpa = stress_z / 1e6
+
                 # Fill in the corresponding z range for this lamina
-                stress_matrix[j, i] = stress_z
+                stress_matrix[j, i] = stress_z_mpa
             end
         end
 
+        # Determine min and max values for contours
+        min_stress = minimum(stress_matrix)
+        max_stress = maximum(stress_matrix)
+
+        # Set contour levels (10 equally spaced levels between min and max)
+        levels = range(min_stress, stop=max_stress, length=10)
+
+
+
         # Plot each stress component in its own subplot
         subplot(3, 1, k)  # Create a 3-row, 1-column grid of subplots
-        contourf(X, Z, stress_matrix, cmap="viridis")
-        colorbar()
+        contourf(X, Z, stress_matrix, levels = levels, cmap="bwr")
+
+        # Add the colorbar and limit it to 4 ticks
+        cbar = colorbar()
+        cbar.set_ticks(range(min_stress, stop=max_stress, length=4))  # 4 tick values
 
         # Label the subplot
-        xlabel("Length along plate (m)")
-        ylabel("Through-thickness position (m)")
+        xlabel("Span (m)")
+        ylabel("T (m)")
         title(titles[k])
     end
     
-    # Adjust layout and save the combined plot
+    # Adjust layout and save the combined plot with DPI set to 300
     tight_layout()
-    savefig("stress_contour_plots.png")
-    println("Combined stress contour plots saved as stress_contour_plots.png")
+    savefig("stress_contour_plots.png", dpi=300)
 end
+
+# Helper function to create a meshgrid
+function meshgrid(x, y)
+    X = repeat(x', length(y), 1)
+    Y = repeat(y, 1, length(x))
+    return X, Y
+end
+
+
