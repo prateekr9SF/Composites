@@ -1,6 +1,7 @@
 using LinearAlgebra
 using PyPlot
 
+
 include("stress.jl")
 
 # Material properties for a single lamina of CFRP
@@ -84,8 +85,11 @@ function bending_moment_elliptical(a, q_max, q_self_weight)
     return Mx
 end
 
-# Function to compute elliptical lift distribution and body weight distribution
 function plot_force_distributions(a, q_max, q_self_weight)
+ 
+    # Set font to Times New Roman
+    rc("font", family="Times New Roman")
+    
     # Define span-wise locations along the plate
     x_vals = range(0, a, length=100)
     
@@ -101,15 +105,11 @@ function plot_force_distributions(a, q_max, q_self_weight)
     # Label the plot
     xlabel("Length along plate (m)")
     ylabel("Force Distribution (N/m²)")
-    title("Elliptical Load and Body Weight Distribution")
     legend()
     
-    # Save the plot as a PNG file
-    savefig("force_distributions.png")
-    println("Plot saved as force_distributions.png")
+    # Save the plot as a PNG file with a DPI of 300
+    savefig("Plots/force_distributions.png", dpi=300)
 end
-
-
 
 
 # Total thickness of laminate and stacking sequence
@@ -164,17 +164,5 @@ stress_distributions = compute_stress_distribution_all(lamina_stiffness, thickne
 
 plot_all_stress_contours(x_vals, stress_distributions, thickness, stacking_sequence)
 
-#plot_stress_distributions(x_vals, stress_distributions, thickness, stacking_sequence)
-
-
-# Plot deflection along the plate length using PyPlot
-#figure()
-#plot(x_vals, w_vals, color="b", linewidth=2)
-#xlabel("Length along plate (m)")
-#ylabel("Deflection (m)")
-#title("Deflection of Cantilevered Plate under Uniform Load")
-## Save the plot as a PNG file
-#savefig("cantilevered_plate_deflection.png")
-
-#plot_force_distributions(a, q_max, q_self_weight)
+plot_force_distributions(a, q_max, q_self_weight)
 

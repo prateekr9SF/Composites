@@ -129,7 +129,7 @@ function plot_all_stress_contours(x_vals, stress_distributions, thickness, stack
 
         # Plot each stress component in its own subplot
         subplot(3, 1, k)  # Create a 3-row, 1-column grid of subplots
-        contourf(X, Z, stress_matrix, levels = levels, cmap="bwr")
+        contourf(X, Z, stress_matrix, levels = levels, cmap="RdBu_r")
 
         # Add the colorbar and limit it to 4 ticks
         cbar = colorbar()
@@ -143,7 +143,7 @@ function plot_all_stress_contours(x_vals, stress_distributions, thickness, stack
     
     # Adjust layout and save the combined plot with DPI set to 300
     tight_layout()
-    savefig("stress_contour_plots.png", dpi=300)
+    savefig("Plots/stress_contour_plots.png", dpi=300)
 end
 
 # Helper function to create a meshgrid
