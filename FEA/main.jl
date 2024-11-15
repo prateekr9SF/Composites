@@ -12,6 +12,29 @@ struct Ply
 end
 
 
+function apply_uniform_force(f, nodes, chord_length, total_magnitude)
+    # Find nodes at the free end (x = chord_length)
+    free_nodes = [n for n in 1:length(nodes) if nodes[n][1] ≈ chord_length]
+
+    # Compute force per node
+    num_free_nodes = length(free_nodes)
+
+    if num_free_nodes == 0
+        error("No nodes found at the free end to apply forces.")
+    end
+
+    force_per_node = total_magnitude / num_free_nodes
+
+    # Apply forces in the z-direction
+    for n in free_nodes
+        f[(n - 1) * 3 + 3] += force_per_node  # Add force to z-direction DOF
+    end
+
+    println("Applied a total force of $total_magnitude N in z-direction, distributed uniformly.")
+
+    return f
+end
+
 
 # Laminate stiffness matries
 function compute_laminate_matrices(plies)
@@ -71,20 +94,37 @@ function element_stiffness_matrix(A, B, D, node_coords)
     gauss_points = [-1/sqrt(3), 1/sqrt(3)]
     weights = [1.0, 1.0]
 
+    # Construct the block stiffness matrix
+    C = [A B;
+         B D]
+
     # Cycle thorough each gauss point
     for ξ in gauss_points
         for η in gauss_points
+            # Get shape function for his gauss point
             N, dN_dξ, dN_dη = shape_functions_Q4(ξ, η)
+
+            # Get jacobian for this gauss point
             J = jacobian(node_coords, dN_dξ, dN_dη)
+
             detJ = det(J)
             J_inv = inv(J)
+
+            # Get strain-displacement matrix
             B_matrix = strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
 
+            # Extend B to include bending components
+            B_extended = vcat(B_matrix, B_matrix)  # Duplicate rows for bending
+
+            # Compute stiffness matrix contribution at this Gauss point
+            Ke += B_extended' * C * B_extended * detJ * weights[1] * weights[2]
+
             # Simplified combination: TODO: Check for actual implemtation
-            stiffness_matrix = A + B + D
+            # Done: Look above
+            #stiffness_matrix = A + B + D
 
             # Element stiffness matrix
-            Ke += B_matrix' * stiffness_matrix * B_matrix * detJ * weights[1] * weights[2]
+            #Ke += B_matrix' * stiffness_matrix * B_matrix * detJ * weights[1] * weights[2]
         end
     end
     return Ke
@@ -234,12 +274,21 @@ end
 
 # Boundary conditions
 f = zeros(num_dofs)
+
+
+# Apply uniform force on the free end
+total_force = 1.0  # Total force in N
+f = apply_uniform_force(f, nodes, chord_length, total_force)
+
 fixed_nodes = [n for n in 1:num_nodes if nodes[n][1] ≈ 0.0]
 
 
-# Set constraint degrees to freedom in K matrix to zero
+# Reduce global stiffness matrix
 for n in fixed_nodes
+    # Get dof indices
     dofs = (n - 1) * 3 .+ (1:3)
+
+    # Loop over indices and enforece zero dispacement
     for dof in dofs
         K[dof, :] .= 0.0
         K[:, dof] .= 0.0
@@ -249,7 +298,7 @@ for n in fixed_nodes
 end
 
 # Solve system
-#u = K \ f
+u = K \ f
 
 
 
