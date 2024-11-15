@@ -1,5 +1,48 @@
 import numpy as np
 
+import matplotlib.pyplot as plt
+import matplotlib.tri as tri
+
+def plot_displacement_contours(nodes, displacements, dof_per_node, title="Displacement Contours"):
+    """
+    Plots the displacement contours for the plate element.
+    
+    Parameters:
+        nodes : ndarray
+            Nodal coordinates of the plate element.
+        displacements : ndarray
+            Displacement vector (w, theta_x, theta_y) for all nodes.
+        dof_per_node : int
+            Number of degrees of freedom per node (e.g., 3 for Reissner-Mindlin plate elements).
+        title : str
+            Title of the plot.
+    """
+    # Extract transverse displacements (w) for each node
+    w_displacements = displacements[0::dof_per_node]
+
+    # Create triangulation for plotting
+    triangulation = tri.Triangulation(nodes[:, 0], nodes[:, 1], [[0, 1, 2], [0, 2, 3]])
+
+    # Plot the contour
+    plt.figure(figsize=(8, 6))
+    contour = plt.tricontourf(triangulation, w_displacements, levels=12, cmap='viridis')
+    plt.colorbar(contour, label='Transverse Displacement (w) [m]')
+    
+    # Add element boundaries
+    for i in range(nodes.shape[0]):
+        plt.plot(nodes[:, 0], nodes[:, 1], color='black', linestyle='--', linewidth=0.8)
+
+    # Formatting
+    plt.title(title)
+    plt.xlabel('X Coordinate [m]')
+    plt.ylabel('Y Coordinate [m]')
+    plt.axis('equal')
+    plt.grid(True)
+    
+    # Show plot
+    plt.show()
+
+
 # Material properties
 E = 210e9  # Young's modulus (Pa)
 nu = 0.3   # Poisson's ratio
@@ -135,3 +178,6 @@ for i in range(num_nodes):
     print(f"Node {i + 1}: w = {displacements[i * dof_per_node]:.6e} m, "
           f"theta_x = {displacements[i * dof_per_node + 1]:.6e} rad, "
           f"theta_y = {displacements[i * dof_per_node + 2]:.6e} rad")
+
+
+plot_displacement_contours(nodes, displacements, dof_per_node, title="Transverse Displacement Contours")

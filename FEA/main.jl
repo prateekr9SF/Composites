@@ -113,7 +113,7 @@ function element_stiffness_matrix(A, B, D, node_coords)
             if abs(detJ) < 1e-10
                 error("Jacobian determinant is too small or zero. Element is degenerate.")
             end
-            
+
             # Compute inverse Jacobian
             J_inv = try
                 inv(J)
@@ -121,14 +121,14 @@ function element_stiffness_matrix(A, B, D, node_coords)
                 error("Failed to compute inverse of Jacobian. Check element connectivity and mesh quality.\nError: $e")
             end
 
-            # Get strain-displacement matrix
+            # Get strain-displacement matrix (Extended with membrane)
             B_matrix = strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
 
             # Extend B to include bending components
-            B_extended = vcat(B_matrix, B_matrix)  # Duplicate rows for bending
+            #B_extended = vcat(B_matrix, B_matrix)  # Duplicate rows for bending
 
             # Compute stiffness matrix contribution at this Gauss point
-            Ke += B_extended' * C * B_extended * detJ * weights[1] * weights[2]
+            Ke += B_matrix' * C * B_matrix * detJ * weights[1] * weights[2]
 
             # Simplified combination: TODO: Check for actual implemtation
             # Done: Look above
@@ -174,18 +174,51 @@ function jacobian(node_coords, dN_dξ, dN_dη)
 end
 
 # Strain-displacement matrix B
+#function strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
+#    B = zeros(3, 12)
+#    for i in 1:4
+#        dN_dx = J_inv[1, 1] * dN_dξ[i] + J_inv[1, 2] * dN_dη[i]
+#        dN_dy = J_inv[2, 1] * dN_dξ[i] + J_inv[2, 2] * dN_dη[i]
+#        B[1, 3*(i-1) + 1] = dN_dx
+#        B[2, 3*(i-1) + 2] = dN_dy
+#        B[3, 3*(i-1) + 1] = dN_dy
+#        B[3, 3*(i-1) + 2] = dN_dx
+#    end
+#    return B
+#end
+
 function strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
-    B = zeros(3, 12)
+    B_membrane = zeros(3, 12)  # Membrane strain-displacement matrix
+    B_bending = zeros(3, 12)   # Bending strain-displacement matrix
+
+    # Compute membrane components (first derivatives)
     for i in 1:4
         dN_dx = J_inv[1, 1] * dN_dξ[i] + J_inv[1, 2] * dN_dη[i]
         dN_dy = J_inv[2, 1] * dN_dξ[i] + J_inv[2, 2] * dN_dη[i]
-        B[1, 3*(i-1) + 1] = dN_dx
-        B[2, 3*(i-1) + 2] = dN_dy
-        B[3, 3*(i-1) + 1] = dN_dy
-        B[3, 3*(i-1) + 2] = dN_dx
+
+        B_membrane[1, 3*(i-1) + 1] = dN_dx
+        B_membrane[2, 3*(i-1) + 2] = dN_dy
+        B_membrane[3, 3*(i-1) + 1] = dN_dy
+        B_membrane[3, 3*(i-1) + 2] = dN_dx
     end
-    return B
+
+    # Compute bending components (second derivatives)
+    for i in 1:4
+        d2N_dξ2 = dN_dξ[i] / J_inv[1, 1]
+        d2N_dη2 = dN_dη[i] / J_inv[2, 2]
+        d2N_dξη = dN_dξ[i] / J_inv[1, 2]
+
+        # Curvature-strain relationship for bending
+        B_bending[1, 3*(i-1) + 3] = d2N_dξ2
+        B_bending[2, 3*(i-1) + 3] = d2N_dη2
+        B_bending[3, 3*(i-1) + 3] = 2 * d2N_dξη
+    end
+
+    # Combine membrane and bending components into the extended B matrix
+    B_extended = vcat(B_membrane, B_bending)
+    return B_extended
 end
+
 
 function plot_mesh(nodes, elements)
     # Initialize a new figure
@@ -296,30 +329,34 @@ f = apply_uniform_force(f, nodes, chord_length, total_force)
 fixed_nodes = [n for n in 1:num_nodes if nodes[n][1] ≈ 0.0]
 
 
-println("Fixed nodes: ", fixed_nodes)
+#println("Fixed nodes: ", fixed_nodes)
 
 # Reduce global stiffness matrix
 for n in fixed_nodes
     # Get all 3 DOFs for the fixed node
     dofs = (n - 1) * 3 .+ (1:3)
 
+    #println("DOFS:", dofs)
+
     # Loop over indices and enforece zero dispacement
     for dof in dofs
         K[dof, :] .= 0.0
         K[:, dof] .= 0.0
         K[dof, dof] = 1.0
-        #f[dof] = 0.0
+        f[dof] = 0.0
     end
 end
 
-println("Force applied: ", f)
-println("Elements: ", elements)
+#println("Force applied: ", f)
+#println("Elements: ", elements)
 
-println("Rank of stiffness matrix K: ", rank(K))
-println("Num of rows: ", size(K,1))
+println("K Matrix: ", K)
+
+#println("Rank of stiffness matrix K: ", rank(K))
+#println("Num of rows: ", size(K,1))
 
 # Solve system
-u = K \ f
+#u = K \ f
 
 
 
