@@ -108,7 +108,18 @@ function element_stiffness_matrix(A, B, D, node_coords)
             J = jacobian(node_coords, dN_dξ, dN_dη)
 
             detJ = det(J)
-            J_inv = inv(J)
+
+            # Error check for detJ
+            if abs(detJ) < 1e-10
+                error("Jacobian determinant is too small or zero. Element is degenerate.")
+            end
+            
+            # Compute inverse Jacobian
+            J_inv = try
+                inv(J)
+            catch e
+                error("Failed to compute inverse of Jacobian. Check element connectivity and mesh quality.\nError: $e")
+            end
 
             # Get strain-displacement matrix
             B_matrix = strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
@@ -278,14 +289,18 @@ f = zeros(num_dofs)
 
 # Apply uniform force on the free end
 total_force = 1.0  # Total force in N
+
+
 f = apply_uniform_force(f, nodes, chord_length, total_force)
 
 fixed_nodes = [n for n in 1:num_nodes if nodes[n][1] ≈ 0.0]
 
 
+println("Fixed nodes: ", fixed_nodes)
+
 # Reduce global stiffness matrix
 for n in fixed_nodes
-    # Get dof indices
+    # Get all 3 DOFs for the fixed node
     dofs = (n - 1) * 3 .+ (1:3)
 
     # Loop over indices and enforece zero dispacement
@@ -293,9 +308,15 @@ for n in fixed_nodes
         K[dof, :] .= 0.0
         K[:, dof] .= 0.0
         K[dof, dof] = 1.0
-        f[dof] = 0.0
+        #f[dof] = 0.0
     end
 end
+
+println("Force applied: ", f)
+println("Elements: ", elements)
+
+println("Rank of stiffness matrix K: ", rank(K))
+println("Num of rows: ", size(K,1))
 
 # Solve system
 u = K \ f
