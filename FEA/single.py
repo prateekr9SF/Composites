@@ -1,47 +1,6 @@
 import numpy as np
-
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
-
-def plot_displacement_contours(nodes, displacements, dof_per_node, title="Displacement Contours"):
-    """
-    Plots the displacement contours for the plate element.
-    
-    Parameters:
-        nodes : ndarray
-            Nodal coordinates of the plate element.
-        displacements : ndarray
-            Displacement vector (w, theta_x, theta_y) for all nodes.
-        dof_per_node : int
-            Number of degrees of freedom per node (e.g., 3 for Reissner-Mindlin plate elements).
-        title : str
-            Title of the plot.
-    """
-    # Extract transverse displacements (w) for each node
-    w_displacements = displacements[0::dof_per_node]
-
-    # Create triangulation for plotting
-    triangulation = tri.Triangulation(nodes[:, 0], nodes[:, 1], [[0, 1, 2], [0, 2, 3]])
-
-    # Plot the contour
-    plt.figure(figsize=(8, 6))
-    contour = plt.tricontourf(triangulation, w_displacements, levels=12, cmap='viridis')
-    plt.colorbar(contour, label='Transverse Displacement (w) [m]')
-    
-    # Add element boundaries
-    for i in range(nodes.shape[0]):
-        plt.plot(nodes[:, 0], nodes[:, 1], color='black', linestyle='--', linewidth=0.8)
-
-    # Formatting
-    plt.title(title)
-    plt.xlabel('X Coordinate [m]')
-    plt.ylabel('Y Coordinate [m]')
-    plt.axis('equal')
-    plt.grid(True)
-    
-    # Show plot
-    plt.show()
-
 
 # Material properties
 E = 210e9  # Young's modulus (Pa)
@@ -52,17 +11,20 @@ t = 0.01   # Plate thickness (m)
 L = 1.0  # Plate length (m)
 H = 1.0  # Plate height (m)
 
-# Node coordinates
+# Node coordinates (for two elements)
 nodes = np.array([
     [0.0, 0.0],  # Node 1
     [L, 0.0],    # Node 2
-    [L, H],      # Node 3
-    [0.0, H]     # Node 4
+    [L, H / 2],  # Node 3
+    [0.0, H / 2],  # Node 4
+    [L, H],  # Node 5
+    [0.0, H]   # Node 6
 ])
 
-# Connectivity
+# Connectivity (two elements)
 elements = np.array([
-    [0, 1, 2, 3]  # Single Q4 element
+    [0, 1, 2, 3],  # Element 1
+    [3, 2, 4, 5]   # Element 2
 ])
 
 # Degrees of freedom per node
@@ -82,23 +44,15 @@ def shape_function_derivatives(xi, eta):
 
 # Compute element stiffness matrix
 def compute_element_stiffness(xy, t, E, nu):
-    # Material bending stiffness matrix (D_b)
     D_b = (E * t**3) / (12 * (1 - nu**2)) * np.array([
         [1, nu, 0],
         [nu, 1, 0],
         [0, 0, (1 - nu) / 2]
     ])
-    
-    # Shear modulus (G)
     G = E / (2 * (1 + nu))
-    
-    # Shear correction factor (kappa)
     kappa = 5 / 6
-    
-    # Material shear stiffness matrix (D_s)
     D_s = kappa * G * t * np.eye(2)
 
-    # Gaussian quadrature points and weights
     gauss_points = [(-np.sqrt(1/3), -np.sqrt(1/3)), 
                     (np.sqrt(1/3), -np.sqrt(1/3)),
                     (np.sqrt(1/3), np.sqrt(1/3)),
@@ -109,43 +63,34 @@ def compute_element_stiffness(xy, t, E, nu):
 
     for gp, w in zip(gauss_points, weights):
         xi, eta = gp
-
-        # Derivatives of shape functions in natural coordinates
         dN_dxi = shape_function_derivatives(xi, eta)
-
-        # Jacobian and its inverse
         J = np.dot(dN_dxi, xy)
         det_J = np.linalg.det(J)
         inv_J = np.linalg.inv(J)
-
-        # Derivatives of shape functions in physical coordinates
         dN_dx = np.dot(inv_J, dN_dxi)
 
-        # Construct bending strain-displacement matrix (B_b)
         B_b = np.zeros((3, 12))
-        for i in range(4):  # Loop over nodes
-            B_b[0, i * 3 + 1] = dN_dx[0, i]  # theta_x
-            B_b[1, i * 3 + 2] = dN_dx[1, i]  # theta_y
-            B_b[2, i * 3 + 1] = dN_dx[1, i]  # theta_x
-            B_b[2, i * 3 + 2] = dN_dx[0, i]  # theta_y
+        for i in range(4):
+            B_b[0, i * 3 + 1] = dN_dx[0, i]
+            B_b[1, i * 3 + 2] = dN_dx[1, i]
+            B_b[2, i * 3 + 1] = dN_dx[1, i]
+            B_b[2, i * 3 + 2] = dN_dx[0, i]
 
-        # Construct shear strain-displacement matrix (B_s)
         B_s = np.zeros((2, 12))
-        for i in range(4):  # Loop over nodes
-            B_s[0, i * 3]     = dN_dx[0, i]  # w
-            B_s[1, i * 3]     = dN_dx[1, i]  # w
-            B_s[0, i * 3 + 1] = dN_dx[1, i]  # theta_x
-            B_s[1, i * 3 + 2] = dN_dx[0, i]  # theta_y
+        for i in range(4):
+            B_s[0, i * 3] = dN_dx[0, i]
+            B_s[1, i * 3] = dN_dx[1, i]
+            B_s[0, i * 3 + 1] = dN_dx[1, i]
+            B_s[1, i * 3 + 2] = dN_dx[0, i]
 
-        # Add contributions to the element stiffness matrix
         ke += det_J * w * (np.dot(B_b.T, np.dot(D_b, B_b)) + np.dot(B_s.T, np.dot(D_s, B_s)))
 
     return ke
 
 # Assemble global stiffness matrix
-K = np.zeros((num_dof, num_dof))  # Global stiffness matrix
+K = np.zeros((num_dof, num_dof))
 for elem in elements:
-    xy = nodes[elem, :]  # Node coordinates for the element
+    xy = nodes[elem, :]
     ke = compute_element_stiffness(xy, t, E, nu)
 
     element_dofs = []
@@ -156,12 +101,12 @@ for elem in elements:
         for j in range(12):
             K[element_dofs[i], element_dofs[j]] += ke[i, j]
 
-# Define the load vector (transverse load applied at Node 3)
+# Define the load vector (transverse load applied at Node 5)
 load = np.zeros(num_dof)
-load[6] = -1000  # Apply -1000 N transverse force at Node 3 (w DOF)
+load[12] = -1000  # Apply -1000 N transverse force at Node 5 (w DOF)
 
-# Boundary conditions (fix all DOFs at Node 1 and Node 4)
-fixed_dofs = [0, 1, 2, 9, 10, 11]  # Fix w, theta_x, theta_y at Node 1 and Node 4
+# Boundary conditions (fix all DOFs at Node 1 and Node 6)
+fixed_dofs = [0, 1, 2, 15, 16, 17]  # Fix w, theta_x, theta_y at Node 1 and Node 6
 free_dofs = np.setdiff1d(np.arange(num_dof), fixed_dofs)
 
 # Reduce stiffness matrix and load vector
@@ -179,5 +124,20 @@ for i in range(num_nodes):
           f"theta_x = {displacements[i * dof_per_node + 1]:.6e} rad, "
           f"theta_y = {displacements[i * dof_per_node + 2]:.6e} rad")
 
+# Plot displacement contours
+def plot_displacement_contours(nodes, displacements, dof_per_node, elements, title="Displacement Contours"):
+    w_displacements = displacements[0::dof_per_node]
+    triangulation = tri.Triangulation(nodes[:, 0], nodes[:, 1], elements[:, [0, 1, 2, 0, 2, 3]].reshape(-1, 3))
+    plt.figure(figsize=(8, 6))
+    contour = plt.tricontourf(triangulation, w_displacements, levels=12, cmap='viridis')
+    plt.colorbar(contour, label='Transverse Displacement (w) [m]')
+    for elem in elements:
+        plt.plot(nodes[elem, 0], nodes[elem, 1], color='black', linestyle='--', linewidth=0.8)
+    plt.title(title)
+    plt.xlabel('X Coordinate [m]')
+    plt.ylabel('Y Coordinate [m]')
+    plt.axis('equal')
+    plt.grid(True)
+    plt.show()
 
-plot_displacement_contours(nodes, displacements, dof_per_node, title="Transverse Displacement Contours")
+plot_displacement_contours(nodes, displacements, dof_per_node, elements, title="Transverse Displacement Contours")
