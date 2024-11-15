@@ -11,13 +11,7 @@ struct Ply
     angle::Float64
 end
 
-# Ply definition with stacking order
-plies = [
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 0),
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 45),
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, -45),
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 90)
-]
+
 
 # Laminate stiffness matries
 function compute_laminate_matricess(plies)
@@ -57,19 +51,19 @@ function Q_matrix(ply::Ply)
 end
 
 # Transform Q to global coordinates for a given ply angle
-#function transform_Q(Q_local, angle)
+function transform_Q(Q_local, angle)
 
+    θ = deg2rad(angle)
+    c = cos(θ)
+    s = sin(θ)
 
+    # Transformation matrix
+    T = [c^2   s^2    2*c*s;
+         s^2   c^2   -2*c*s;
+        -c*s   c*s    c^2-s^2]
 
-
-
-
-
-
-
-
-
-
+    return T' * Q_local * T
+end
 
 
 function plot_mesh(nodes, elements)
@@ -132,3 +126,12 @@ end
 
 
 plot_mesh(nodes, elements)
+
+
+# Ply definition with stacking order
+plies = [
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 0),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 45),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, -45),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 90)
+]
