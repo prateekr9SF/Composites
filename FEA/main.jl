@@ -232,6 +232,26 @@ for elem in elements
     end
 end
 
+# Boundary conditions
+f = zeros(num_dofs)
+fixed_nodes = [n for n in 1:num_nodes if nodes[n][1] ≈ 0.0]
+
+
+# Set constraint degrees to freedom in K matrix to zero
+for n in fixed_nodes
+    dofs = (n - 1) * 3 .+ (1:3)
+    for dof in dofs
+        K[dof, :] .= 0.0
+        K[:, dof] .= 0.0
+        K[dof, dof] = 1.0
+        f[dof] = 0.0
+    end
+end
+
+# Solve system
+#u = K \ f
+
+
 
 
 
