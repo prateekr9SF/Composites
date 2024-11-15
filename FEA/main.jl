@@ -14,7 +14,7 @@ end
 
 
 # Laminate stiffness matries
-function compute_laminate_matricess(plies)
+function compute_laminate_matrices(plies)
     A = zeros(3, 3)    # Extensional stiffness
     B = zeros(3, 3)    # Coupling stiffness
     D = zeros(3, 3)    # Bending stiffness
@@ -122,24 +122,19 @@ function jacobian(node_coords, dN_dξ, dN_dη)
     return J
 end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Strain-displacement matrix B
+function strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
+    B = zeros(3, 12)
+    for i in 1:4
+        dN_dx = J_inv[1, 1] * dN_dξ[i] + J_inv[1, 2] * dN_dη[i]
+        dN_dy = J_inv[2, 1] * dN_dξ[i] + J_inv[2, 2] * dN_dη[i]
+        B[1, 3*(i-1) + 1] = dN_dx
+        B[2, 3*(i-1) + 2] = dN_dy
+        B[3, 3*(i-1) + 1] = dN_dy
+        B[3, 3*(i-1) + 2] = dN_dx
+    end
+    return B
+end
 
 function plot_mesh(nodes, elements)
     # Initialize a new figure
@@ -207,3 +202,36 @@ end
 
 
 plot_mesh(nodes, elements)
+
+#### FEA CALCULATION ####
+
+# Assemble global stiffness matrix
+num_nodes = length(nodes)
+num_dofs = 3 * num_nodes
+
+K = zeros(num_dofs, num_dofs)
+
+# Stiffness matrix for the entire laminate
+A, B, D = compute_laminate_matrices(plies)
+
+for elem in elements
+    node_coords = [nodes[n] for n in elem]
+    Ke = element_stiffness_matrix(A, B, D, node_coords)
+
+    # Get indices and assemble global stiffness matrix
+    for i in 1:4
+        for j in 1:4
+            for d1 in 1:3
+                for d2 in 1:3
+                    global_i = (elem[i] - 1) * 3 + d1
+                    global_j = (elem[j] - 1) * 3 + d2
+                    K[global_i, global_j] += Ke[(i-1)*3 + d1, (j-1)*3 + d2]
+                end
+            end
+        end
+    end
+end
+
+
+
+
