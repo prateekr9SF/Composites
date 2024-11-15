@@ -90,6 +90,47 @@ function element_stiffness_matrix(A, B, D, node_coords)
     return Ke
 end
 
+# Shape functions and their derivatives for Q4 element
+function shape_functions_Q4(ξ, η)
+    N = [
+        (1 - ξ) * (1 - η) / 4;
+        (1 + ξ) * (1 - η) / 4;
+        (1 + ξ) * (1 + η) / 4;
+        (1 - ξ) * (1 + η) / 4
+    ]
+    dN_dξ = [
+        -(1 - η) / 4, (1 - η) / 4, (1 + η) / 4, -(1 + η) / 4
+    ]
+
+    dN_dη = [
+        -(1 - ξ) / 4, -(1 + ξ) / 4, (1 + ξ) / 4, (1 - ξ) / 4
+    ]
+
+    return N, dN_dξ, dN_dη
+end
+
+# Jacobian for Q4 element
+function jacobian(node_coords, dN_dξ, dN_dη)
+    J = zeros(2, 2)
+    for i in 1:4
+        x, y = node_coords[i][1], node_coords[i][2]
+        J[1, 1] += dN_dξ[i] * x
+        J[1, 2] += dN_dξ[i] * y
+        J[2, 1] += dN_dη[i] * x
+        J[2, 2] += dN_dη[i] * y
+    end
+    return J
+end
+
+
+
+
+
+
+
+
+
+
 
 
 
