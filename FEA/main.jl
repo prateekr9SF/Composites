@@ -65,6 +65,40 @@ function transform_Q(Q_local, angle)
     return T' * Q_local * T
 end
 
+# Element stiffness matrix
+function element_stiffness_matrix(A, B, D, node_coords)
+    Ke = zeros(12, 12)
+    gauss_points = [-1/sqrt(3), 1/sqrt(3)]
+    weights = [1.0, 1.0]
+
+    # Cycle thorough each gauss point
+    for ξ in gauss_points
+        for η in gauss_points
+            N, dN_dξ, dN_dη = shape_functions_Q4(ξ, η)
+            J = jacobian(node_coords, dN_dξ, dN_dη)
+            detJ = det(J)
+            J_inv = inv(J)
+            B_matrix = strain_displacement_matrix_Q4(dN_dξ, dN_dη, J_inv)
+
+            # Simplified combination: TODO: Check for actual implemtation
+            stiffness_matrix = A + B + D
+
+            # Element stiffness matrix
+            Ke += B_matrix' * stiffness_matrix * B_matrix * detJ * weights[1] * weights[2]
+        end
+    end
+    return Ke
+end
+
+
+
+
+
+
+
+
+
+
 
 function plot_mesh(nodes, elements)
     # Initialize a new figure
@@ -98,7 +132,13 @@ function plot_mesh(nodes, elements)
     savefig("mesh.png", dpi=300)
 end
 
-
+# Ply definition with stacking order
+plies = [
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 0),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 45),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, -45),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 90)
+]
 
 # Generate mesh
 nx, ny = 10, 5               # Elements in x and y directions
@@ -126,12 +166,3 @@ end
 
 
 plot_mesh(nodes, elements)
-
-
-# Ply definition with stacking order
-plies = [
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 0),
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 45),
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, -45),
-    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 90)
-]
