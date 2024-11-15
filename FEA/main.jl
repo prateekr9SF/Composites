@@ -1,47 +1,63 @@
-using JuAFEM
 using LinearAlgebra
+using PyPlot
 
-# Function to generate a rectangular mesh with Q4 elements
-# Function to generate a rectangular mesh with Q4 elements
-function generate_rectangular_mesh(chord_length, span_length, nx, ny)
-    # Define node positions
-    dx = chord_length / nx
-    dy = span_length / ny
-    nodes = Vector{Vector{Float64}}((nx + 1) * (ny + 1))
+function plot_mesh(nodes, elements)
+    # Initialize a new figure
+    figure()
+    title("2D Mesh")
+    xlabel("x")
+    ylabel("y")
+    axis("equal")
     
-    # Generate node positions in x (chord-wise), y (span-wise), and z=0 (vertical)
-    count = 1
-    for j in 0:ny
-        for i in 0:nx
-            nodes[count] = [i * dx, j * dy, 0.0]  # z is initially zero
-            count += 1
+    # Loop over each element and plot its edges
+    for element in elements
+        x_coords = []
+        y_coords = []
+        
+        # Collect x and y coordinates for each node in the element
+        for node_idx in element
+            x, y, _ = nodes[node_idx]  # Ignore z-coordinate for 2D plot
+            push!(x_coords, x)
+            push!(y_coords, y)
         end
+
+        # Close the quadrilateral by appending the first node's coordinates again
+        push!(x_coords, x_coords[1])
+        push!(y_coords, y_coords[1])
+
+        # Plot the element as a closed shape
+        plot(x_coords, y_coords, "b-", lw=1.5, alpha=0.7)
     end
-    
-    # Define Q4 elements with connectivity (node indices)
-    elements = []
-    for j in 0:ny-1
-        for i in 0:nx-1
-            n1 = i + j * (nx + 1) + 1
-            n2 = n1 + 1
-            n3 = n1 + nx + 2
-            n4 = n1 + nx + 1
-            push!(elements, (n1, n2, n3, n4))
-        end
-    end
-    
-    # Create the grid from nodes and elements
-    grid = generate_grid(elements, nodes)
-    return grid
+
+    # Display the plot
+    savefig("mesh.png", dpi=300)
 end
 
 
-# Plate dimensions
-chord_length = 1.0
-span_length = 0.5
-nx = 10
-ny = 5
 
-mesh = generate_rectangular_mesh(chord_length, span_length, nx, ny)
+# Generate mesh
+nx, ny = 10, 5               # Elements in x and y directions
+chord_length, span_length = 1.0, 0.5
+dx = chord_length / nx
+dy = span_length / ny
 
-println("Passing package extraction!")
+nodes = []
+for j in 0:ny
+    for i in 0:nx
+        push!(nodes, (i * dx, j * dy, 0.0))  # (x, y, z=0)
+    end
+end
+
+elements = []
+for j in 0:ny-1
+    for i in 0:nx-1
+        n1 = i + j * (nx + 1) + 1
+        n2 = n1 + 1
+        n3 = n1 + nx + 2
+        n4 = n1 + nx + 1
+        push!(elements, (n1, n2, n3, n4))
+    end
+end
+
+
+plot_mesh(nodes, elements)
