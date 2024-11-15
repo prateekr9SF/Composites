@@ -19,6 +19,56 @@ plies = [
     Ply(150e9, 10e9, 5e9, 0.3, 0.125, 90)
 ]
 
+# Laminate stiffness matries
+function compute_laminate_matricess(plies)
+    A = zeros(3, 3)    # Extensional stiffness
+    B = zeros(3, 3)    # Coupling stiffness
+    D = zeros(3, 3)    # Bending stiffness
+    # Total laminate thickness
+    z = -sum(ply.thickness for ply in plies) / 2
+
+    for ply in plies
+        Q_local = Q_matrix(ply)
+        Q_global = transform_Q(Q_local, ply.angle)
+        z_next = z + ply.thickness
+
+        # Populate stiffness matrices
+        A += Q_global * ply.thickness
+        B += Q_global * (z_next^2 - z^2) / 2
+        D += Q_global * (z_next^3 - z^3) / 3
+        z = z_next
+    end
+    return A, B, D
+end
+
+# Stiffness matrix Q for each ply
+function Q_matrix(ply::Ply)
+    v21 = ply.v12 * ply.E2 / ply.E1
+    Q11 = ply.E1 / (1 - ply.v12 * v21)
+    Q22 = ply.E2 / (1 - ply.v12 * v21)
+    Q12 = ply.v12 * ply.E2 / (1 - ply.v12 * v21)
+    Q66 = ply.G12
+
+    return [
+        Q11  Q12   0;
+        Q12  Q22   0;
+         0    0   Q66
+    ]
+end
+
+# Transform Q to global coordinates for a given ply angle
+#function transform_Q(Q_local, angle)
+
+
+
+
+
+
+
+
+
+
+
 
 
 
