@@ -7,25 +7,27 @@ E = 210e9  # Young's modulus (Pa)
 nu = 0.3   # Poisson's ratio
 t = 0.01   # Plate thickness (m)
 
-# Geometry and nodes
-L = 1.0  # Plate length (m)
-H = 1.0  # Plate height (m)
+# Plate geometry
+Lx = 1.0  # Chord length (m)
+Ly = 2.0  # Span length (m)
+nx = 4    # Number of elements along the chord (x-direction)
+ny = 4    # Number of elements along the span (y-direction)
 
-# Node coordinates (for two elements)
-nodes = np.array([
-    [0.0, 0.0],  # Node 1
-    [L, 0.0],    # Node 2
-    [L, H / 2],  # Node 3
-    [0.0, H / 2],  # Node 4
-    [L, H],  # Node 5
-    [0.0, H]   # Node 6
-])
+# Generate nodes
+x_coords = np.linspace(0, Lx, nx + 1)  # Chord-wise direction
+y_coords = np.linspace(0, Ly, ny + 1)  # Span-wise direction
+nodes = np.array([[x, y] for y in y_coords for x in x_coords])
 
-# Connectivity (two elements)
-elements = np.array([
-    [0, 1, 2, 3],  # Element 1
-    [3, 2, 4, 5]   # Element 2
-])
+# Define element connectivity
+elements = []
+for j in range(ny):
+    for i in range(nx):
+        n1 = j * (nx + 1) + i
+        n2 = n1 + 1
+        n3 = n1 + (nx + 1) + 1
+        n4 = n1 + (nx + 1)
+        elements.append([n1, n2, n3, n4])
+elements = np.array(elements)
 
 # Degrees of freedom per node
 dof_per_node = 3  # w, theta_x, theta_y
@@ -59,7 +61,7 @@ def compute_element_stiffness(xy, t, E, nu):
                     (-np.sqrt(1/3), np.sqrt(1/3))]
     weights = [1, 1, 1, 1]
 
-    ke = np.zeros((12, 12))  # 4 nodes x 3 DOFs per node
+    ke = np.zeros((12, 12))
 
     for gp, w in zip(gauss_points, weights):
         xi, eta = gp
@@ -101,12 +103,25 @@ for elem in elements:
         for j in range(12):
             K[element_dofs[i], element_dofs[j]] += ke[i, j]
 
-# Define the load vector (transverse load applied at Node 5)
+# Define the load vector (uniformly distributed load along Y = Ly)
 load = np.zeros(num_dof)
-load[12] = -1000  # Apply -1000 N transverse force at Node 5 (w DOF)
 
-# Boundary conditions (fix all DOFs at Node 1 and Node 6)
-fixed_dofs = [0, 1, 2, 15, 16, 17]  # Fix w, theta_x, theta_y at Node 1 and Node 6
+# Find nodes at Y = Ly
+trailing_edge_nodes = [i for i, node in enumerate(nodes) if np.isclose(node[1], Ly)]
+
+# Apply uniformly distributed load (total load = 1 N)
+total_load = 1.0
+load_per_node = total_load / len(trailing_edge_nodes)
+
+for node in trailing_edge_nodes:
+    load[node * dof_per_node] += load_per_node  # Add to the w DOF of each node
+
+# Boundary conditions (fix all DOFs at nodes along the leading span edge, Y = 0)
+fixed_dofs = []
+for i, node in enumerate(nodes):
+    if np.isclose(node[1], 0.0):  # Fix nodes where Y = 0
+        fixed_dofs.extend([i * dof_per_node, i * dof_per_node + 1, i * dof_per_node + 2])
+
 free_dofs = np.setdiff1d(np.arange(num_dof), fixed_dofs)
 
 # Reduce stiffness matrix and load vector
@@ -134,8 +149,8 @@ def plot_displacement_contours(nodes, displacements, dof_per_node, elements, tit
     for elem in elements:
         plt.plot(nodes[elem, 0], nodes[elem, 1], color='black', linestyle='--', linewidth=0.8)
     plt.title(title)
-    plt.xlabel('X Coordinate [m]')
-    plt.ylabel('Y Coordinate [m]')
+    plt.xlabel('Chord-wise Direction (X) [m]')
+    plt.ylabel('Span-wise Direction (Y) [m]')
     plt.axis('equal')
     plt.grid(True)
     plt.show()
