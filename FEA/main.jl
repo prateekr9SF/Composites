@@ -1,6 +1,27 @@
 using LinearAlgebra
 using PyPlot
 
+# Material property struct
+struct Ply
+    E1::Float64
+    E2::Float64
+    G12::Float64
+    v12::Float64
+    thickness::Float64
+    angle::Float64
+end
+
+# Ply definition with stacking order
+plies = [
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 0),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 45),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, -45),
+    Ply(150e9, 10e9, 5e9, 0.3, 0.125, 90)
+]
+
+
+
+
 function plot_mesh(nodes, elements)
     # Initialize a new figure
     figure()
