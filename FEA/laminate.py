@@ -38,11 +38,10 @@ x_coords, y_coords, nodes, elements = generateMesh(Lx, Ly, nx, ny)
 # Degrees of freedom per node
 dof_per_node = 3  # w, theta_x, theta_y (default for RM theory)
 
-# Define ply properties
 plies = [
-    {"E1": 140e9, "E2": 10e9, "G12": 5e9, "nu12": 0.3, "thickness": 0.002, "angle": 0},
-    {"E1": 140e9, "E2": 10e9, "G12": 5e9, "nu12": 0.3, "thickness": 0.002, "angle": 90},
-    {"E1": 140e9, "E2": 10e9, "G12": 5e9, "nu12": 0.3, "thickness": 0.002, "angle": 45},
+    {"E1": 140e9, "E2": 10e9, "G12": 5e9, "nu12": 0.3, "thickness": 0.002, "angle": 0, "density": 1600},
+    {"E1": 140e9, "E2": 10e9, "G12": 5e9, "nu12": 0.3, "thickness": 0.002, "angle": 90, "density": 1600},
+    {"E1": 140e9, "E2": 10e9, "G12": 5e9, "nu12": 0.3, "thickness": 0.002, "angle": 45, "density": 1600},
 ]
 
 
@@ -115,6 +114,44 @@ def apply_elliptic_pressure(nodes, dof_per_node, load_vector, pressure_max, a, b
     
     return load_vector
 
+def apply_ply_weight(nodes, dof_per_node, load_vector, plies, gravity=9.81):
+    """
+    Compute the weight of the composite ply and apply it as a distributed force on each node.
+
+    Parameters:
+        nodes : ndarray
+            Nodal coordinates of the plate (Nx2 array where N is the number of nodes).
+        dof_per_node : int
+            Number of degrees of freedom per node (e.g., 3 for Reissner-Mindlin plate elements).
+        load_vector : ndarray
+            Global load vector to update (size: num_dof).
+        plies : list of dict
+            Ply properties, where each dict includes 'thickness' and 'density'.
+        gravity : float
+            Acceleration due to gravity (m/s^2). Default is 9.81 m/s^2.
+
+    Returns:
+        load_vector : ndarray
+            Updated global load vector with the ply weight applied.
+    """
+    # Compute the total thickness and density of the laminate
+    total_thickness = sum(ply["thickness"] for ply in plies)
+    average_density = sum(ply["density"] * ply["thickness"] for ply in plies) / total_thickness
+
+    # Compute the weight of the composite laminate per unit area
+    weight_per_unit_area = average_density * total_thickness * gravity
+
+    # Distribute the weight across all nodes
+    num_nodes = nodes.shape[0]
+    force_per_node = weight_per_unit_area * (Lx * Ly) / num_nodes
+
+    # Apply the force in the transverse displacement direction (w) for each node
+    for i in range(num_nodes):
+        load_vector[i * dof_per_node] += force_per_node  # Add force to the w DOF
+    
+    return load_vector
+
+
 def compute_element_stiffness(xy, D_b, t, kappa, G13, G23, use_reissner_mindlin):
     """Compute the element stiffness matrix."""
     gauss_points = [(-np.sqrt(1/3), -np.sqrt(1/3)), (np.sqrt(1/3), -np.sqrt(1/3)),
@@ -181,9 +218,20 @@ pressure_max = 5000.0  # Maximum pressure in Pascals
 a = 0.5  # Semi-major axis (m)
 b = 1.0  # Semi-minor axis (m)
 
+#-------------------LOAD DEFINITION----------------------#
+
+# Define gravity and material density for each ply
+gravity = 9.81  # m/s^2
+for ply in plies:
+    ply["density"] = 1600  # Density in kg/m^3 for composite material (example value)
+    
+# Apply ply weight as distributed force
+load = apply_ply_weight(nodes, dof_per_node, load, plies, gravity)
+
 # Apply the elliptic pressure load
 load = apply_elliptic_pressure(nodes, dof_per_node, load, pressure_max, a, b)
 
+#--------------------------------------------------------#
 
 fixed_dofs = []
 for i, node in enumerate(nodes):
@@ -263,7 +311,7 @@ def plot_displacement_contours(nodes, displacements, dof_per_node, elements, tit
     
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-def plot_displaced_body(nodes, displacements, dof_per_node, elements, title="Displaced Body", scale_factor=1.0):
+def plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1.0):
     """
     Plot the displaced body of the plate in 3D without axes and with a horizontal colorbar.
     
@@ -290,7 +338,7 @@ def plot_displaced_body(nodes, displacements, dof_per_node, elements, title="Dis
     #print(w_displacements)
 
     # Create the 3D figure
-    fig = plt.figure(figsize=(12, 8))
+    fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.set_facecolor('white')  # Set background color to white
     
@@ -324,6 +372,10 @@ def plot_displaced_body(nodes, displacements, dof_per_node, elements, title="Dis
     
     # Turn off the z-axis
     ax.zaxis.set_visible(False)
+    ax.zaxis.set_tick_params(labelsize=0, colors=(1, 1, 1, 0))  # Hide ticks
+    ax.zaxis.line.set_color((1, 1, 1, 0))  # Hide the axis line
+    ax.zaxis.label.set_color((1, 1, 1, 0))  # Hide the label
+
     
     #ax.set_zlabel('Transverse Displacement (w) [m]', fontsize=24, fontname="Times New Roman", labelpad=20)
 
@@ -341,9 +393,11 @@ def plot_displaced_body(nodes, displacements, dof_per_node, elements, title="Dis
     # Set the aspect ratio and view angle
     ax.view_init(elev=30, azim=135)  # Isometric view
     ax.set_box_aspect([1, 2, 0.5])  # Adjust aspect ratio (X:Y:Z)
-
-    # Set the plot title
-    plt.title(title, fontsize=16, pad=20)
+    
+    F = plt.gcf()
+    Size = F.get_size_inches()
+    F.set_size_inches(Size[0]*1.5, Size[1]*1.5, forward=True) # Set forward to True to resize window along with plot in figure.
+#F.set_size_inches(Size[0]*3.5, Size[1]*1.5, forward=True) # Set forward to True to resize window along with plot in figure.
     
     plt.rcParams['figure.dpi'] = 300
     plt.rcParams['savefig.dpi'] = 300
@@ -354,6 +408,6 @@ def plot_displaced_body(nodes, displacements, dof_per_node, elements, title="Dis
 
 
 
-plot_displaced_body(nodes, displacements, dof_per_node, elements, title="Displaced Body", scale_factor=10.0)
+plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1.0)
 
 #plot_displacement_contours(nodes, displacements, dof_per_node, elements, title="Displacement Contours")
