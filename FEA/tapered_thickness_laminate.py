@@ -32,7 +32,7 @@ x_coords, y_coords, nodes, elements = generateMesh(Lx, Ly, nx, ny)
 # Degrees of freedom per node
 dof_per_node = 3  # w, theta_x, theta_y
 
-# Define symmetric laminate
+#-------------------------------LAMINATE DEFINITION--------------------#
 def define_symmetric_laminate(base_ply, stacking_sequence):
     laminate = []
     for angle in stacking_sequence:
@@ -43,12 +43,25 @@ def define_symmetric_laminate(base_ply, stacking_sequence):
     laminate += symmetric_part
     return laminate
 
+# CFRP Ply and Laminate Definition
 base_ply = {
-    "E1": 140e9, "E2": 10e9, "G12": 5e9,
-    "nu12": 0.3, "thickness": 0.000125, "density": 1600
+    "E1": 140e9,  # Longitudinal modulus (Pa)
+    "E2": 10e9,   # Transverse modulus (Pa)
+    "G12": 5e9,   # Shear modulus (Pa)
+    "nu12": 0.3,  # Poisson's ratio
+    "density": 1600,  # Density (kg/m^3)
+    "thickness": 0.000125  # Ply thickness (m)
 }
+
+# Symmetric laminate
 stacking_sequence = [0, 45, -45, 90]
+
+# Quasi-iso-tropic laminate
+#stacking_sequence = [0, 90]
+
 plies = define_symmetric_laminate(base_ply, stacking_sequence)
+
+#------------------------------END-----------------------#
 
 # Thickness taper function
 def thickness_taper(y, y_min, y_max, t_min, t_max):
@@ -266,6 +279,7 @@ load_reduced = load[free_dofs]
 displacements = np.zeros(num_dof)
 displacements[free_dofs] = np.linalg.solve(K_reduced, load_reduced)
 
+plot_displacement_contours(nodes, displacements, dof_per_node, elements, scale_factor=1.0)
 
 # Post-processing....
 plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1.0)
