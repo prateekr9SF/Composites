@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from output import *
+from load import *
 
 
 # Plate geometry
@@ -89,7 +89,7 @@ def compute_abd_matrix_with_taper(plies, y_coords, y_min, y_max, t_min, t_max):
     return A, B, D
 
 y_min, y_max = 0.0, Ly
-t_min, t_max = 0.001, 0.005  # Thickness varies from 1 mm to 5 mm
+t_min, t_max = 0.005, 0.005  # Thickness varies from 1 mm to 5 mm
 A, B, D = compute_abd_matrix_with_taper(plies, y_coords, y_min, y_max, t_min, t_max)
 
 def apply_weight_load(nodes, elements, dof_per_node, load_vector, plies, gravity=9.81):
@@ -147,19 +147,12 @@ def apply_weight_load(nodes, elements, dof_per_node, load_vector, plies, gravity
 
     # Apply the weight loads to the global load vector (w DOF only)
     for i, weight in enumerate(node_weights):
-        load_vector[i * dof_per_node] += weight
+        load_vector[i * dof_per_node] -= weight
 
     return load_vector
 
 
-# Apply elliptical pressure loads
-def apply_elliptic_pressure(nodes, dof_per_node, load_vector, pressure_max, a, b):
-    for i, node in enumerate(nodes):
-        x, y = node
-        if (x**2 / a**2 + y**2 / b**2) <= 1.0:
-            pressure = pressure_max * (1 - x**2 / a**2 - y**2 / b**2)
-            load_vector[i * dof_per_node] += pressure
-    return load_vector
+
 
 def compute_element_stiffness(xy, D, t, kappa, G13, G23, use_reissner_mindlin):
     """
@@ -241,18 +234,24 @@ for elem in elements:
             K[element_dofs[i], element_dofs[j]] += ke[i, j]
 
 # Initialize load vector
-load = np.zeros(num_dof)
+gravity_load = np.zeros(num_dof)  # Gravity load vector
+pressure_load = np.zeros(num_dof)  # Pressure load vector
+
 
 # Apply weight loads
 # Apply corrected weight loads to the global load vector
-load = apply_weight_load(nodes, elements, dof_per_node, load, plies)
+gravity_load = apply_weight_load(nodes, elements, dof_per_node, gravity_load, plies)
 
 
 # Apply elliptical pressure load
 pressure_max = 5000.0  # Pascals
-a = 0.5  # Semi-major axis (m)
-b = 1.0  # Semi-minor axis (m)
-#load = apply_elliptic_pressure(nodes, dof_per_node, load, pressure_max, a, b)
+
+# Apply linearly varying load
+load_max = 5000.0  # Maximum load (e.g., N/m^2)
+pressure_load = apply_spanwise_varying_load(nodes, dof_per_node, pressure_load, load_max, Ly)
+
+# Combine gravity and pressure loads
+load = gravity_load + pressure_load
 
 # Apply boundary conditions
 fixed_dofs = []
@@ -267,105 +266,11 @@ load_reduced = load[free_dofs]
 displacements = np.zeros(num_dof)
 displacements[free_dofs] = np.linalg.solve(K_reduced, load_reduced)
 
-def plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1.0):
-    """
-    Plot the displaced body of the plate in 3D without axes and with a horizontal colorbar.
-    
-    Parameters:
-        nodes : ndarray
-            Nodal coordinates of the plate (Nx2 array where N is the number of nodes).
-        displacements : ndarray
-            Global displacement vector (size: num_dof).
-        dof_per_node : int
-            Number of degrees of freedom per node (e.g., 3 for Reissner-Mindlin plate elements).
-        elements : ndarray
-            Element connectivity matrix (Ex4 array for quadrilateral elements).
-        title : str
-            Title of the plot.
-        scale_factor : float
-            Factor to scale the displacements for better visualization.
-    """
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
 
-    # Extract transverse displacements (w) for each node
-    w_displacements = displacements[0::dof_per_node] * scale_factor
-    
-    #print(w_displacements)
-
-    # Create the 3D figure
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_facecolor('white')  # Set background color to white
-    
-    # Make the background enclosed by the axes transparent
-    ax.patch.set_alpha(0)  # Set patch background transparency to 0
-    
-    # Plot the plate surface (displaced shape)
-    for elem in elements:
-        # Get nodal coordinates and displacements for the current element
-        x = nodes[elem, 0]
-        y = nodes[elem, 1]
-        z = w_displacements[elem]  # Scaled displacements
-        
-        # Create the polygon for the element
-        verts = [list(zip(x, y, z))]
-        poly = Poly3DCollection(verts, alpha=0.8, edgecolor='k')
-        poly.set_facecolor(plt.cm.viridis((z - z.min()) / (z.max() - z.min())))  # Map displacement to color
-        ax.add_collection3d(poly)
-
-    # Set axis limits explicitly to ensure the plot is not cut
-    x_min, x_max = nodes[:, 0].min(), nodes[:, 0].max()
-    y_min, y_max = nodes[:, 1].min(), nodes[:, 1].max()
-    z_min, z_max = w_displacements.min(), w_displacements.max()
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.set_zlim(z_min, z_max)
-    
-    for axis in ['top','bottom','left','right']:
-        ax.spines[axis].set_linewidth(1.5)
-    
-    # Set axis labels
-    ax.set_xlabel('Chord (m)', fontsize=14, fontname="Times New Roman", labelpad=20)
-    ax.set_ylabel('Span (m)', fontsize=14, fontname="Times New Roman", labelpad=20)
-    
-    # Turn off the z-axis
-    ax.zaxis.set_visible(False)
-    ax.zaxis.set_tick_params(labelsize=0, colors=(1, 1, 1, 0))  # Hide ticks
-    ax.zaxis.line.set_color((1, 1, 1, 0))  # Hide the axis line
-    ax.zaxis.label.set_color((1, 1, 1, 0))  # Hide the label
-
-    
-    #ax.set_zlabel('Transverse Displacement (w) [m]', fontsize=24, fontname="Times New Roman", labelpad=20)
-
-
-    # Hide the axes and grid
-    ax.grid(False)
-    ax.axis("on")
-    
-    # Add colorbar horizontally
-    mappable = plt.cm.ScalarMappable(cmap='viridis', norm=plt.Normalize(vmin=w_displacements.min(), vmax=w_displacements.max()))
-    mappable.set_array(w_displacements)
-    cbar = fig.colorbar(mappable, ax=ax, orientation='horizontal', pad=0.1, fraction=0.02)
-    cbar.set_label('Transverse Displacement (w) [m]', fontsize=12, fontname = "Times New Roman")
-
-    # Set the aspect ratio and view angle
-    ax.view_init(elev=30, azim=135)  # Isometric view
-    ax.set_box_aspect([1, 2, 0.5])  # Adjust aspect ratio (X:Y:Z)
-    
-    F = plt.gcf()
-    Size = F.get_size_inches()
-    F.set_size_inches(Size[0]*1.5, Size[1]*1.5, forward=True) # Set forward to True to resize window along with plot in figure.
-#F.set_size_inches(Size[0]*3.5, Size[1]*1.5, forward=True) # Set forward to True to resize window along with plot in figure.
-    
-    plt.rcParams['figure.dpi'] = 300
-    plt.rcParams['savefig.dpi'] = 300
-    
-    # Show plot
-    plt.tight_layout()
-    plt.show()
-
-
+# Post-processing....
+plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1.0)
 
 # Plot the weight load distribution with FEA mesh
-plot_weight_loads(nodes, elements, load, dof_per_node)
+plot_weight_loads(nodes, elements, gravity_load, dof_per_node)
+
+plot_pressure_loads(nodes, elements, pressure_load, dof_per_node)
