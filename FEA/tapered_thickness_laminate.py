@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from output import *
 
 
 # Plate geometry
@@ -91,16 +92,65 @@ y_min, y_max = 0.0, Ly
 t_min, t_max = 0.001, 0.005  # Thickness varies from 1 mm to 5 mm
 A, B, D = compute_abd_matrix_with_taper(plies, y_coords, y_min, y_max, t_min, t_max)
 
-# Apply weight loads
-def apply_ply_weight(nodes, dof_per_node, load_vector, plies, gravity=9.81):
+def apply_weight_load(nodes, elements, dof_per_node, load_vector, plies, gravity=9.81):
+    """
+    Compute and apply the correct weight loads for each node, accounting for element areas.
+
+    Parameters:
+        nodes : ndarray
+            Array of nodal coordinates (Nx2, where N is the number of nodes).
+        elements : ndarray
+            Element connectivity array (Ex4, where E is the number of elements).
+        dof_per_node : int
+            Degrees of freedom per node (e.g., 3 for Reissner-Mindlin elements).
+        load_vector : ndarray
+            Global load vector to be updated with weight loads (size: num_dof).
+        plies : list of dict
+            List of ply properties, where each dict includes 'thickness' and 'density'.
+        gravity : float
+            Acceleration due to gravity (m/s^2). Default is 9.81.
+
+    Returns:
+        load_vector : ndarray
+            Updated global load vector with weight loads applied.
+    """
+    # Compute total laminate thickness and average density
     total_thickness = sum(ply["thickness"] for ply in plies)
     average_density = sum(ply["density"] * ply["thickness"] for ply in plies) / total_thickness
-    weight_per_unit_area = average_density * total_thickness * gravity
-    num_nodes = nodes.shape[0]
-    force_per_node = weight_per_unit_area * (Lx * Ly) / num_nodes
-    for i in range(num_nodes):
-        load_vector[i * dof_per_node] += force_per_node
+
+    # Weight per unit area
+    weight_per_unit_area = total_thickness * average_density * gravity
+
+    # Initialize node weights to zero
+    node_weights = np.zeros(nodes.shape[0])
+
+    # Loop through elements to distribute weight
+    for elem in elements:
+        # Extract node coordinates for the current element
+        x_coords = nodes[elem, 0]
+        y_coords = nodes[elem, 1]
+
+        # Compute the area of the quadrilateral element using the shoelace formula
+        element_area = 0.5 * abs(
+            x_coords[0] * y_coords[1] + x_coords[1] * y_coords[2] +
+            x_coords[2] * y_coords[3] + x_coords[3] * y_coords[0] -
+            (y_coords[0] * x_coords[1] + y_coords[1] * x_coords[2] +
+             y_coords[2] * x_coords[3] + y_coords[3] * x_coords[0])
+        )
+
+        # Total weight for this element
+        element_weight = weight_per_unit_area * element_area
+        
+        # Distribute weight equally among the 4 nodes of the element
+        for i in range(4):
+            node_weights[elem[i]] += element_weight / 4
+
+    # Apply the weight loads to the global load vector (w DOF only)
+    for i, weight in enumerate(node_weights):
+        load_vector[i * dof_per_node] += weight
+
     return load_vector
+
 
 # Apply elliptical pressure loads
 def apply_elliptic_pressure(nodes, dof_per_node, load_vector, pressure_max, a, b):
@@ -194,13 +244,15 @@ for elem in elements:
 load = np.zeros(num_dof)
 
 # Apply weight loads
-load = apply_ply_weight(nodes, dof_per_node, load, plies)
+# Apply corrected weight loads to the global load vector
+load = apply_weight_load(nodes, elements, dof_per_node, load, plies)
+
 
 # Apply elliptical pressure load
 pressure_max = 5000.0  # Pascals
 a = 0.5  # Semi-major axis (m)
 b = 1.0  # Semi-minor axis (m)
-load = apply_elliptic_pressure(nodes, dof_per_node, load, pressure_max, a, b)
+#load = apply_elliptic_pressure(nodes, dof_per_node, load, pressure_max, a, b)
 
 # Apply boundary conditions
 fixed_dofs = []
@@ -315,4 +367,5 @@ def plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_fact
 
 
 
-plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1.0)
+# Plot the weight load distribution with FEA mesh
+plot_weight_loads(nodes, elements, load, dof_per_node)
