@@ -65,7 +65,7 @@ plies = define_symmetric_laminate(base_ply, stacking_sequence)
 
 # Thickness taper function
 def thickness_taper(y, y_min, y_max, t_min, t_max):
-    return t_min + (t_max - t_min) * (y - y_min) / (y_max - y_min)
+    return t_max - (t_max - t_min) * (y - y_min) / (y_max - y_min)
 
 # Compute ply stiffness
 def compute_ply_stiffness(ply):
