@@ -75,7 +75,7 @@ def plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_fact
     mappable = plt.cm.ScalarMappable(cmap='viridis', norm=plt.Normalize(vmin=w_displacements.min(), vmax=w_displacements.max()))
     mappable.set_array(w_displacements)
     cbar = fig.colorbar(mappable, ax=ax, orientation='horizontal', pad=0.1, fraction=0.02)
-    cbar.set_label('Transverse Displacement (w) [m]', fontsize=12, fontname="Times New Roman")
+    cbar.set_label('Transverse Displacement [m]', fontsize=12, fontname="Times New Roman")
 
     # Hide the axes and grid
     ax.grid(False)

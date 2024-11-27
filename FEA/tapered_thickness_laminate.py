@@ -43,6 +43,41 @@ def define_symmetric_laminate(base_ply, stacking_sequence):
     laminate += symmetric_part
     return laminate
 
+
+def define_laminate(base_ply, stacking_sequence, max_thickness):
+    """
+    Automatically stack plies based on a specified stacking sequence
+    and desired maximum laminate thickness.
+    
+    Parameters:
+        base_ply: dict
+            Properties of a single ply (e.g., material properties, thickness).
+        stacking_sequence: list of int
+            Ply angles in degrees (e.g., [0, 45, -45, 90]).
+        max_thickness: float
+            Maximum desired laminate thickness (m).
+    
+    Returns:
+        plies: list of dict
+            List of plies defining the laminate.
+    """
+    ply_thickness = base_ply["thickness"]
+    num_repeats = int(np.ceil(max_thickness / (len(stacking_sequence) * ply_thickness)))
+    total_stacking_sequence = stacking_sequence * num_repeats
+
+    # Truncate the sequence to fit the maximum thickness
+    total_thickness = 0
+    plies = []
+    for angle in total_stacking_sequence:
+        if total_thickness + ply_thickness > max_thickness:
+            break
+        ply = base_ply.copy()
+        ply["angle"] = angle
+        plies.append(ply)
+        total_thickness += ply_thickness
+
+    return plies
+
 # CFRP Ply and Laminate Definition
 base_ply = {
     "E1": 140e9,  # Longitudinal modulus (Pa)
@@ -55,11 +90,14 @@ base_ply = {
 
 # Symmetric laminate
 stacking_sequence = [0, 45, -45, 90]
-
+max_thickness = 0.005  # 5 mm
 # Quasi-iso-tropic laminate
 #stacking_sequence = [0, 90]
 
-plies = define_symmetric_laminate(base_ply, stacking_sequence)
+#plies = define_symmetric_laminate(base_ply, stacking_sequence)
+
+# Generate the laminate
+plies = define_laminate(base_ply, stacking_sequence, max_thickness)
 
 #------------------------------END-----------------------#
 
@@ -288,3 +326,20 @@ plot_displaced_body(nodes, displacements, dof_per_node, elements, scale_factor=1
 plot_weight_loads(nodes, elements, gravity_load, dof_per_node)
 
 plot_pressure_loads(nodes, elements, pressure_load, dof_per_node)
+
+
+# Calculate number of plies
+num_plies = len(plies)
+
+# Calculate total thickness and average density of the laminate
+total_thickness = sum(ply["thickness"] for ply in plies)
+average_density = sum(ply["density"] * ply["thickness"] for ply in plies) / total_thickness
+
+# Calculate the weight of the laminate
+area = Lx * Ly  # Area of the plate
+laminate_weight = total_thickness * average_density * area * 9.81  # Weight in Newtons (W = m * g)
+
+# Print results
+print(f"Number of plies in the laminate: {num_plies}")
+print(f"Total laminate thickness: {total_thickness:.6f} m")
+print(f"Laminate weight: {laminate_weight:.2f} N")
